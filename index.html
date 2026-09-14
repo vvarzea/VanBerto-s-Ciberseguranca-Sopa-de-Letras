@@ -714,47 +714,89 @@ body.cb-mode .num-badge{display:inline-flex;}
 
 /* ════════════════════════════════════════════════════════════════════
    PC RESPONSIVE SCALE SYSTEM — reference 1920×1080
-   Mobile (≤700px): wrapper is transparent, layout flows normally.
-   Desktop (>700px): wrapper becomes a fixed 1920×1080 stage that is
-   uniformly scaled with transform: scale(min(iw/1920, ih/1080)).
-   Game logic is untouched — only visual scaling.
+   This stage is now gated by the JS-controlled "desktop-stage" class on
+   <html> instead of a plain width media query. A real smartphone turned
+   sideways is often wider than 700px, so a width-only check used to
+   misclassify it as "desktop" and squeeze the whole game into a tiny
+   letterboxed rectangle. JS (see the applyScale script below) decides
+   "desktop-stage" using touch/screen-size detection, so phones — in any
+   orientation — stay in the normal, full-screen responsive layout, and
+   only real desktops/large screens get the fixed 1920×1080 scaled stage.
    ════════════════════════════════════════════════════════════════════ */
 #scale-wrap{width:100%;}
 
-@media(min-width:701px){
-  html,body{
-    width:100vw;height:100vh;height:100dvh;
-    overflow:hidden;
-    margin:0;
-    background:#0a0414;
-  }
-  #scale-wrap{
-    position:absolute;
-    top:0;left:0;
-    width:1920px;
-    height:1080px;
-    transform-origin:top left;
-    transform:scale(1);
-    will-change:transform;
-  }
-  /* Inside scaled stage, screens must fill the 1080px height,
-     NOT the actual viewport (which can be smaller). */
-  #scale-wrap .screen{
-    min-height:1080px!important;
-    max-height:1080px;
-    height:1080px;
-  }
-  #scale-wrap #gameScreen{
+html.desktop-stage,html.desktop-stage body{
+  width:100vw;height:100vh;height:100dvh;
+  overflow:hidden;
+  margin:0;
+  background:#0a0414;
+}
+html.desktop-stage #scale-wrap{
+  position:absolute;
+  top:0;left:0;
+  width:1920px;
+  height:1080px;
+  transform-origin:top left;
+  transform:scale(1);
+  will-change:transform;
+}
+/* Inside scaled stage, screens must fill the 1080px height,
+   NOT the actual viewport (which can be smaller). */
+html.desktop-stage #scale-wrap .screen{
+  min-height:1080px!important;
+  max-height:1080px;
+  height:1080px;
+}
+html.desktop-stage #scale-wrap #gameScreen{
+  overflow-y:auto;
+}
+/* Overlays cover the stage, not the raw viewport */
+html.desktop-stage #scale-wrap #winOverlay,
+html.desktop-stage #scale-wrap #confetti,
+html.desktop-stage #scale-wrap .overlay,
+html.desktop-stage #scale-wrap .modal-overlay{
+  position:absolute;
+  inset:0;
+}
+
+/* ── PHONE IN LANDSCAPE: make sure the game truly fills the screen ──
+   Wins over the generic ">700px" sidebar/word tweaks further up because
+   it is declared later in the stylesheet (same specificity). */
+@media(max-height:520px) and (orientation:landscape){
+  html:not(.desktop-stage) #gameScreen{
+    padding-top:.25rem;padding-bottom:.25rem;
+    padding-left:.4rem;padding-right:.4rem;
+    height:100vh;height:100dvh;
     overflow-y:auto;
   }
-  /* Overlays cover the stage, not the raw viewport */
-  #scale-wrap #winOverlay,
-  #scale-wrap #confetti,
-  #scale-wrap .overlay,
-  #scale-wrap .modal-overlay{
-    position:absolute;
-    inset:0;
+  html:not(.desktop-stage) .game-header{margin-bottom:.15rem;}
+  html:not(.desktop-stage) .game-layout{
+    flex-direction:row;
+    align-items:stretch;
+    max-width:100%;
+    height:auto;
   }
+  html:not(.desktop-stage) #grid-wrap{
+    flex:1 1 auto;
+    align-items:flex-start;
+  }
+  html:not(.desktop-stage) .sidebar{
+    width:clamp(140px,26vw,210px);
+    max-width:210px;
+    flex:0 0 auto;
+    flex-direction:column;
+    flex-wrap:nowrap;
+    align-items:flex-start;
+    justify-content:flex-start;
+    max-height:100%;
+    overflow-y:auto;
+  }
+  html:not(.desktop-stage) .words-zone{flex-direction:column;flex-wrap:nowrap;}
+  html:not(.desktop-stage) #word-list{flex-direction:column!important;flex-wrap:nowrap!important;}
+  html:not(.desktop-stage) .progress-wrap,
+  html:not(.desktop-stage) #score,
+  html:not(.desktop-stage) .lvl-desc,
+  html:not(.desktop-stage) #recordDisplay{display:none;}
 }
 </style>
 </head>
@@ -879,14 +921,35 @@ body.cb-mode .num-badge{display:inline-flex;}
   const MOBILE_BP = 700;
   const REF_W = 1920;
   const REF_H = 1080;
+  // Longest physical screen side (doesn't change when the phone rotates,
+  // since screen.width/height swap together) above which we assume a
+  // "real" tablet/desktop rather than a phone.
+  const PHONE_MAX_LONG_SIDE = 960;
+
+  function isPhoneDevice(){
+    const touch = ('ontouchstart' in window) || (navigator.maxTouchPoints||0) > 0;
+    if(!touch) return false;
+    const longSide = Math.max(window.screen.width||0, window.screen.height||0);
+    return longSide > 0 && longSide <= PHONE_MAX_LONG_SIDE;
+  }
+
+  // Desktop stage only for non-phone devices with a wide-enough viewport.
+  // A phone turned sideways can easily be wider than 700px, but it must
+  // still get the normal full-screen mobile layout, not the tiny scaled
+  // 1920×1080 stage meant for real desktop/laptop screens.
+  function shouldUseDesktopStage(){
+    return !isPhoneDevice() && window.innerWidth > MOBILE_BP;
+  }
 
   function applyScale(){
     const wrap = document.getElementById('scale-wrap');
     if(!wrap) return;
     const iw = window.innerWidth;
     const ih = window.innerHeight;
+    const desktop = shouldUseDesktopStage();
+    document.documentElement.classList.toggle('desktop-stage', desktop);
 
-    if(iw <= MOBILE_BP){
+    if(!desktop){
       wrap.style.transform = '';
       wrap.style.transformOrigin = '';
       document.documentElement.style.setProperty('--game-scale', 1);
@@ -913,13 +976,22 @@ body.cb-mode .num-badge{display:inline-flex;}
   applyScale();
   window.addEventListener('load', applyScale);
   document.addEventListener('DOMContentLoaded', applyScale);
+
+  window.isPhoneDevice = isPhoneDevice;
 })();
+
+/* Shared helper: are we in the normal full-screen "mobile" flow
+   (phones in any orientation, and narrow desktop browser windows),
+   as opposed to the scaled 1920×1080 desktop stage? */
+function isMobileFlow(){
+  return !document.documentElement.classList.contains('desktop-stage');
+}
 
 /* ── DATA ── */
 const LEVELS={
   easy:{
     size:10,
-    words:['SENHA','WIFI','DADOS','REDE','ROBÔ','SITE','AJUDA'],
+    words:['CÓDIGO','WIFI','DADOS','REDE','ROBÔ','SITE','AJUDA'],
     dirs:[[0,1],[1,0],[0,-1],[-1,0]],
     label:'Grelha 10×10 · horizontal e vertical · 7 palavras',
     hints:3,
@@ -946,7 +1018,7 @@ const CHX=['#ff6b9d','#36b5f5','#4ecb71','#ff9f43','#a29bfe','#fd79a8','#00cec9'
 
 /* ── DICAS EDUCATIVAS DE CIBERSEGURANÇA ── */
 const TIPS={
-  'SENHA':'🔐 Uma senha forte tem letras, números e símbolos — e nunca a partilhes com ninguém!',
+  'CÓDIGO':'🔐 Uma boa palavra-passe tem letras, números e símbolos — e nunca a partilhes com ninguém!',
   'WIFI':'📶 Só te ligues a redes Wi-Fi de confiança, nunca a redes desconhecidas e abertas.',
   'DADOS':'🗂️ Os teus dados pessoais (nome, morada, fotos) são só teus — protege-os sempre!',
   'REDE':'🌐 Numa rede social, pensa sempre antes de aceitares pedidos de amizade de estranhos.',
@@ -956,20 +1028,20 @@ const TIPS={
   'SEGURANÇA':'🛡️ A cibersegurança protege-te de perigos online, tal como um cinto de segurança no carro.',
   'INTERNET':'🌍 A Internet é fantástica para aprender, mas usa-a sempre com responsabilidade e bom senso.',
   'BACKUP':'💾 Fazer backup é guardar uma cópia dos teus ficheiros, para nunca os perderes!',
-  'HACKER':'🕵️ Um hacker mal-intencionado tenta roubar dados — por isso usa sempre senhas fortes.',
+  'HACKER':'🕵️ Um hacker mal-intencionado tenta roubar dados — por isso usa sempre palavras-passe fortes.',
   'MORADA':'🏠 Nunca partilhes a tua morada com pessoas que só conheces online.',
   'PRIVACIDADE':'🙈 A privacidade é decidir quem pode ver as tuas informações — protege sempre a tua!',
   'ANTIVÍRUS':'💉 Um antivírus protege o computador de programas maliciosos, como um médico digital.',
   'CLICAR':'🤔 Pensa sempre antes de clicar num link desconhecido — pode ser perigoso!',
   'FOTOS':'📸 Pensa bem antes de publicares fotos tuas ou de amigos — podem ficar online para sempre.',
-  'NUVEM':'☁️ Guardar ficheiros na nuvem é útil, mas usa sempre uma senha forte para proteger a conta.',
+  'NUVEM':'☁️ Guardar ficheiros na nuvem é útil, mas usa sempre uma palavra-passe forte para proteger a conta.',
   'ATUALIZAR':'🔄 Atualizar os teus dispositivos corrige falhas de segurança — faz sempre as atualizações!',
   'PALAVRAPASSE':'🔑 Uma boa palavra-passe é longa, única para cada conta e nunca é partilhada.',
   'PHISHING':'🎣 O phishing são mensagens falsas a tentar roubar-te dados — desconfia sempre!',
   'FIREWALL':'🧱 A firewall é como um muro digital que impede intrusos de entrar no teu computador.',
-  'DISPOSITIVO':'📱 Protege sempre o teu dispositivo com um código, senha ou impressão digital.',
+  'DISPOSITIVO':'📱 Protege sempre o teu dispositivo com um código, palavra-passe ou impressão digital.',
   'PARTILHA':'🔁 Antes de partilhares algo online, pensa: "quero mesmo que todos vejam isto?"',
-  'PROTEGER':'🛡️ Proteger-te online é usar senhas fortes, ter cuidado com links e cuidar da tua privacidade.',
+  'PROTEGER':'🛡️ Proteger-te online é usar palavras-passe fortes, ter cuidado com links e cuidar da tua privacidade.',
   'TELEFONE':'📞 Nunca partilhes o teu número de telefone com estranhos na Internet.',
   'PUBLICAR':'📝 Antes de publicares algo, pensa se ficarias bem se a tua família visse.'
 };
@@ -1226,7 +1298,7 @@ function fillR(g,s){for(let r=0;r<s;r++)for(let c=0;c<s;c++)if(!g[r][c])g[r][c]=
 function calcCellSize(s){
   const gw=document.getElementById('grid-wrap');
   let avail=gw.offsetWidth||gw.getBoundingClientRect().width;
-  const isMobile=window.innerWidth<=700;
+  const isMobile=isMobileFlow();
   // Cap grid at 760px so it doesn't get huge on very wide screens
   avail=Math.min(avail, isMobile ? 9999 : 760);
   if(avail<40){
@@ -1291,11 +1363,20 @@ function buildGame(){
 function renderGrid(s){
   const el=document.getElementById('grid');
   const gw=document.getElementById('grid-wrap');
-  const isMobile=window.innerWidth<=700;
+  const isMobile=isMobileFlow();
   const gap=isMobile ? 2 : 3;
   // Measure after layout settle
   let avail=gw.offsetWidth||gw.getBoundingClientRect().width||Math.min(window.innerWidth*.95,860);
   avail=Math.min(avail, isMobile ? 9999 : 760);
+  // On phones (any orientation) also cap by the available viewport height,
+  // so the grid always fits on screen instead of forcing a scroll — this
+  // matters most in landscape, where height is the tight dimension.
+  if(isMobile){
+    const top=gw.getBoundingClientRect().top;
+    const bottomBreathing=10;
+    const availH=window.innerHeight-top-bottomBreathing;
+    if(availH>60) avail=Math.min(avail, availH);
+  }
   const totalGap=gap*(s-1);
   const cs=Math.max(14, Math.floor((avail-totalGap)/s));
   el.style.gridTemplateColumns=`repeat(${s},${cs}px)`;
@@ -1490,12 +1571,16 @@ function reapplyFound(){
 
 /* redraw on resize */
 let resizeT=null;
-window.addEventListener('resize',()=>{clearTimeout(resizeT);resizeT=setTimeout(()=>{
+function redrawGridIfActive(){
   if(grid.length&&document.getElementById('gameScreen').classList.contains('active')){
     renderGrid(LEVELS[lvl].size);
     reapplyFound();
   }
-},200);});
+}
+window.addEventListener('resize',()=>{clearTimeout(resizeT);resizeT=setTimeout(redrawGridIfActive,200);});
+/* orientationchange sometimes fires before the browser updates
+   innerWidth/innerHeight, so re-check a little later too */
+window.addEventListener('orientationchange',()=>{setTimeout(redrawGridIfActive,350);});
 
 /* ── LEVEL BUTTONS ── */
 document.querySelectorAll('#startScreen .lvl-btn').forEach(b=>b.addEventListener('click',()=>{
@@ -1602,7 +1687,7 @@ const MSGS=[
   'Já estás quase! Força! 🚀',
   'Encontra a próxima! 🎯',
   'És um herói da Cibersegurança! 🏆',
-  'Nunca partilhes a tua senha! 🤫',
+  'Nunca partilhes a tua palavra-passe! 🤫',
   'Pensa antes de clicar! 🤔',
 ];
 let bubT=null;
