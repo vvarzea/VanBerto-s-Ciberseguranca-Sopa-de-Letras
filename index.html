@@ -1239,7 +1239,7 @@ function drawVanBerto(ctx,blink,step,armsUp){
 
 let lvl='easy',grid=[],placed=[],found=[],cells=[],
     selecting=false,startCell=null,selLine=[],
-    hintsLeft=3,playerName='Herói das Crianças',startSel='easy';
+    hintsLeft=3,playerName='Herói da Cibersegurança',startSel='easy';
 
 /* ── CRONÓMETRO E RECORDES ── */
 let timerInterval=null,timerSeconds=0;
@@ -1602,7 +1602,7 @@ function setLetterbox(c){document.body.style.background=c;document.documentEleme
 
 /* ── START ── */
 document.getElementById('btnStart').addEventListener('click',()=>{
-  playerName=document.getElementById('playerName').value.trim()||'Herói das Crianças';
+  playerName=document.getElementById('playerName').value.trim()||'Herói da Cibersegurança';
   lvl=startSel;
   document.getElementById('startScreen').classList.remove('active');
   document.getElementById('gameScreen').classList.add('active');
