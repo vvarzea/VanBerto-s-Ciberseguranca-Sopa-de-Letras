@@ -2,7 +2,7 @@
 <!-- saved from url=(0067)https://resolution-scaler.preview.emergentagent.com/sopa/index.html -->
 <html lang="pt-PT" xml:lang="pt-PT" translate="no" style="--game-scale: 1.1768518518518518;"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#241143">
 <meta http-equiv="Content-Language" content="pt-PT">
 <meta name="language" content="pt-PT">
@@ -660,6 +660,7 @@ body.cb-mode .num-badge{display:inline-flex;}
   white-space:nowrap;
 }
 #timer-box.record-beat{color:#4ecb71;border-color:#4ecb71;animation:recordPulse .6s ease-in-out 2;}
+#timer-box.record-warn{color:#ff6b9d;border-color:#ff6b9d;}
 @keyframes recordPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
 
 /* ═══ FULLSCREEN / MUTE BUTTON ═══ */
@@ -1007,7 +1008,7 @@ const LEVELS={
   },
   hard:{
     size:16,
-    words:['SEGURANÇA','INTERNET','PRIVACIDADE','ANTIVÍRUS','ATUALIZAR','PALAVRAPASSE','PHISHING','FIREWALL','DISPOSITIVO','PARTILHA','PROTEGER','TELEFONE','PUBLICAR'],
+    words:['SPAM','BLOQUEAR','DENUNCIAR','CIBERBULLYING','ATUALIZAR','PALAVRAPASSE','PHISHING','FIREWALL','DISPOSITIVO','PARTILHA','PROTEGER','TELEFONE','PUBLICAR'],
     dirs:[[0,1],[1,0],[1,1],[-1,1],[0,-1],[-1,0],[-1,-1],[1,-1]],
     label:'Grelha 16×16 · todas as direções + invertidas · 13 palavras',
     hints:3,
@@ -1043,7 +1044,11 @@ const TIPS={
   'PARTILHA':'🔁 Antes de partilhares algo online, pensa: "quero mesmo que todos vejam isto?"',
   'PROTEGER':'🛡️ Proteger-te online é usar palavras-passe fortes, ter cuidado com links e cuidar da tua privacidade.',
   'TELEFONE':'📞 Nunca partilhes o teu número de telefone com estranhos na Internet.',
-  'PUBLICAR':'📝 Antes de publicares algo, pensa se ficarias bem se a tua família visse.'
+  'PUBLICAR':'📝 Antes de publicares algo, pensa se ficarias bem se a tua família visse.',
+  'SPAM':'📧 O spam são mensagens indesejadas, muitas vezes com links perigosos — não abras nem respondas.',
+  'BLOQUEAR':'🚫 Se alguém te incomodar online, podes sempre bloquear essa pessoa.',
+  'DENUNCIAR':'📢 Se vires algo errado ou perigoso online, denuncia sempre à plataforma ou a um adulto de confiança.',
+  'CIBERBULLYING':'😢 O ciberbullying magoa tanto como o bullying real — fala sempre com um adulto se acontecer contigo ou com um amigo.'
 };
 let tipsAprendidas=[];
 
@@ -1240,6 +1245,8 @@ function drawVanBerto(ctx,blink,step,armsUp){
 let lvl='easy',grid=[],placed=[],found=[],cells=[],
     selecting=false,startCell=null,selLine=[],
     hintsLeft=3,playerName='Herói da Cibersegurança',startSel='easy';
+/* dicas limitadas por sessão (não por partida): reiniciar o mesmo nível não volta a dar dicas */
+const hintsSession={};
 
 /* ── CRONÓMETRO E RECORDES ── */
 let timerInterval=null,timerSeconds=0;
@@ -1252,11 +1259,28 @@ function startTimer(){
   timerSeconds=0;
   const disp=document.getElementById('timer-display');
   if(disp)disp.textContent=fmtTime(0);
-  document.getElementById('timer-box') && document.getElementById('timer-box').classList.remove('record-beat');
+  const tbox=document.getElementById('timer-box');
+  tbox && tbox.classList.remove('record-beat','record-warn');
   timerInterval=setInterval(()=>{
     timerSeconds++;
     if(disp)disp.textContent=fmtTime(timerSeconds);
+    updateLiveRecordHint();
   },1000);
+}
+/* enquanto se joga, mostra quanto falta para bater o recorde deste nível */
+function updateLiveRecordHint(){
+  const el=document.getElementById('recordDisplay');
+  if(!el)return;
+  const rec=getRecord(lvl),tbox=document.getElementById('timer-box');
+  if(rec==null)return;
+  const remaining=rec-timerSeconds;
+  if(remaining>0){
+    el.textContent='🏆 Faltam '+fmtTime(remaining)+' para bateres o teu recorde!';
+    tbox && tbox.classList.remove('record-warn');
+  } else {
+    el.textContent='⏳ Já passaste o teu tempo recorde ('+fmtTime(rec)+') — força, ainda dá para terminar!';
+    tbox && tbox.classList.add('record-warn');
+  }
 }
 function stopTimer(){if(timerInterval){clearInterval(timerInterval);timerInterval=null;}}
 function recordKey(level){return 'vb_record_'+level;}
@@ -1342,7 +1366,9 @@ function attemptPlaceAll(L,s){
 
 function buildGame(){
   const L=LEVELS[lvl],s=L.size;
-  found=[];hintsLeft=L.hints;tipsAprendidas=[];
+  found=[];tipsAprendidas=[];
+  if(!(lvl in hintsSession))hintsSession[lvl]=L.hints;
+  hintsLeft=hintsSession[lvl];
   const tt=document.getElementById('tipToast');if(tt)tt.classList.remove('show');
   document.getElementById('hints-left').textContent=hintsLeft;
   const res=attemptPlaceAll(L,s);
@@ -1627,7 +1653,7 @@ document.getElementById('btn-hint').addEventListener('click',()=>{
     cl.style.background='var(--bc'+i+')';cl.style.color='var(--fc'+i+')';
     setTimeout(()=>{if(!found.includes(p.word)){cl.style.background='';cl.style.color='';}},2200);
   });
-  hintsLeft--;document.getElementById('hints-left').textContent=hintsLeft;
+  hintsLeft--;hintsSession[lvl]=hintsLeft;document.getElementById('hints-left').textContent=hintsLeft;
   document.getElementById('msg').textContent='💡 Procura: '+p.word;
   showBub('Procura a palavra '+p.word+'! 🕵️');
   setTimeout(()=>{if(found.length<placed.length)document.getElementById('msg').textContent='';},2400);
@@ -1683,7 +1709,7 @@ const MSGS=[
   'Que tal usar uma dica? 💡',
   'Arrasta pelas letras! ✋',
   'Protege-te sempre online! 🛡️',
-  'Cria palavras-passe seguras! 🔐',
+  'Cada dica vale ouro — usa-as com sabedoria! 💡',
   'Já estás quase! Força! 🚀',
   'Encontra a próxima! 🎯',
   'És um herói da Cibersegurança! 🏆',
