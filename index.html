@@ -1006,6 +1006,23 @@ body{font-family:'Nunito','Trebuchet MS',sans-serif;}
   78%{transform:translate(-50%,-50%) scale(1) rotate(-2deg);opacity:1;}
   100%{transform:translate(-50%,-62%) scale(.9) rotate(-2deg);opacity:0;}
 }
+
+/* menos barra em cima: só as ações, alinhadas à direita */
+.header-actions{margin-left:auto;}
+
+/* DICAS bem evidentes */
+#btn-hint{background:linear-gradient(180deg,#ffe066,#ffc800) !important;color:#1e1b4b !important;border:3px solid #1e1b4b !important;font-size:.72rem !important;padding:4px 10px !important;font-weight:700 !important;box-shadow:0 3px 0 #1e1b4b,0 0 0 3px rgba(255,200,0,.35) !important;display:inline-flex;align-items:center;gap:5px;animation:hintBtnPulse 2s ease-in-out infinite;}
+#btn-hint:hover{background:linear-gradient(180deg,#fff08a,#ffd633) !important;transform:translateY(-2px);box-shadow:0 5px 0 #1e1b4b,0 0 0 4px rgba(255,200,0,.45) !important;}
+#btn-hint:active{transform:translateY(2px);box-shadow:0 1px 0 #1e1b4b !important;}
+#btn-hint .hint-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border-radius:50%;background:#ec1e79;color:#fff;border:2px solid #1e1b4b;font-size:.7rem;line-height:1;}
+#btn-hint.empty{background:#e5e7eb !important;color:#6b7280 !important;box-shadow:0 3px 0 #9ca3af !important;animation:none;cursor:not-allowed;}
+#btn-hint.empty .hint-count{background:#9ca3af;}
+@keyframes hintBtnPulse{0%,100%{box-shadow:0 3px 0 #1e1b4b,0 0 0 3px rgba(255,200,0,.30);}50%{box-shadow:0 3px 0 #1e1b4b,0 0 0 7px rgba(255,200,0,.12);}}
+.cell.hint-flash{animation:hintCell .6s ease-in-out infinite alternate;z-index:4;position:relative;box-shadow:0 0 0 4px #ffc800,0 0 18px 6px rgba(255,200,0,.85);}
+@keyframes hintCell{from{transform:scale(1);}to{transform:scale(1.14);}}
+.hint-banner{position:fixed;left:50%;top:14px;transform:translate(-50%,-140%);z-index:900;max-width:92vw;background:#ffc800;color:#1e1b4b;border:3px solid #1e1b4b;border-radius:16px;padding:10px 20px;box-shadow:0 5px 0 #1e1b4b;font:700 clamp(16px,2.6vw,24px) 'Fredoka','Nunito',sans-serif;text-align:center;pointer-events:none;opacity:0;transition:transform .3s cubic-bezier(.34,1.56,.64,1),opacity .2s;}
+.hint-banner.show{transform:translate(-50%,0);opacity:1;}
+@media(prefers-reduced-motion:reduce){#btn-hint,.cell.hint-flash{animation:none !important;}.hint-banner{transition:none;}}
 </style>
 </head>
 <body lang="pt-PT">
@@ -1040,13 +1057,8 @@ body{font-family:'Nunito','Trebuchet MS',sans-serif;}
 <!-- ═══ ECRÃ DE JOGO ═══ -->
 <div id="gameScreen" class="screen">
   <div class="game-header">
-    <div class="level-bar level-bar-game">
-      <button class="lvl-btn easy" data-level="easy">⭐ Fácil</button>
-      <button class="lvl-btn medium" data-level="medium">⭐⭐ Médio</button>
-      <button class="lvl-btn hard" data-level="hard">⭐⭐⭐ Difícil</button>
-    </div>
     <div class="header-actions">
-      <button class="btn btn-sm" id="btn-hint">💡 Dica (<span id="hints-left">3</span>)</button>
+      <button class="btn btn-sm" id="btn-hint" aria-label="Usar uma dica">💡 Dica <span class="hint-count" id="hints-left">3</span></button>
       <button class="btn btn-sm primary" id="btn-restart">↺ Novo Jogo</button>
       <button class="btn btn-sm" id="btn-menu">🏠 Menu</button>
       <button id="btn-mute" title="Silenciar som">🔊</button>
@@ -1057,6 +1069,7 @@ body{font-family:'Nunito','Trebuchet MS',sans-serif;}
   <p class="lvl-desc" id="gameLvlDesc" style="width:100%;max-width:1100px;margin:0 auto .15rem;"></p>
   <div class="progress-wrap"><div class="progress-bar" id="pbar" style="width:0%"></div></div>
   <div id="msg" role="status" aria-live="polite"></div>
+  <div id="hintBanner" class="hint-banner" role="status" aria-live="polite"></div>
   <div id="score"></div>
   <div id="tipToast" class="tip-toast" role="status" aria-live="polite"></div>
   <div class="game-layout" id="game-layout">
@@ -1451,8 +1464,12 @@ function drawVanBerto(ctx,blink,step,armsUp){
 let lvl='easy',grid=[],placed=[],found=[],cells=[],
     selecting=false,startCell=null,selLine=[],
     hintsLeft=3,playerName='Herói da Cibersegurança',startSel='easy';
-/* dicas limitadas por sessão (não por partida): reiniciar o mesmo nível não volta a dar dicas */
-const hintsSession={};
+/* cada novo jogo começa sempre com as dicas do nível (3) */
+function updateHintUI(){
+  const b=document.getElementById('btn-hint'),n=document.getElementById('hints-left');
+  if(n)n.textContent=hintsLeft;
+  if(b){b.classList.toggle('empty',!hintsLeft);b.setAttribute('aria-disabled',hintsLeft?'false':'true');}
+}
 
 /* (cronómetro e recordes removidos — o jogo já não conta o tempo) */
 function stopTimer(){}
@@ -1529,10 +1546,10 @@ function attemptPlaceAll(L,s){
 function buildGame(){
   const L=LEVELS[lvl],s=L.size;
   found=[];tipsAprendidas=[];
-  if(!(lvl in hintsSession))hintsSession[lvl]=L.hints;
-  hintsLeft=hintsSession[lvl];
+  hintsLeft=L.hints;
   const tt=document.getElementById('tipToast');if(tt)tt.classList.remove('show');
-  document.getElementById('hints-left').textContent=hintsLeft;
+  updateHintUI();
+  const hb0=document.getElementById('hintBanner');if(hb0)hb0.classList.remove('show');
   const res=attemptPlaceAll(L,s);
   grid=res.grid;placed=res.placed;
   fillR(grid,s);
@@ -1796,12 +1813,6 @@ document.querySelectorAll('#startScreen .lvl-btn').forEach(b=>b.addEventListener
   b.classList.add('active');startSel=b.dataset.level;
   document.getElementById('startLvlDesc').textContent=LEVELS[startSel].label;
 }));
-document.querySelectorAll('#gameScreen .lvl-btn').forEach(b=>b.addEventListener('click',()=>{
-  document.querySelectorAll('#gameScreen .lvl-btn').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');lvl=b.dataset.level;
-  document.getElementById('gameLvlDesc').textContent=LEVELS[lvl].label;
-  buildGame();
-}));
 
 /* ── FUNDO DA FAIXA EXTERIOR (letterbox) ──
    #241143 liso = tom do ecrã de jogo (sem vinheta, animation:none)
@@ -1819,7 +1830,6 @@ document.getElementById('btnStart').addEventListener('click',()=>{
   document.getElementById('fixed-robot-name').textContent='👤 '+playerName;
   document.querySelector('.robot-wrap') && document.querySelector('.robot-wrap').classList.add('visible');
   document.getElementById('fixed-robot-wrap').classList.add('visible');
-  document.querySelectorAll('#gameScreen .lvl-btn').forEach(b=>b.classList.toggle('active',b.dataset.level===lvl));
   document.getElementById('gameLvlDesc').textContent=LEVELS[lvl].label;
   // wait for layout then build
   requestAnimationFrame(()=>requestAnimationFrame(buildGame));
@@ -1827,15 +1837,16 @@ document.getElementById('btnStart').addEventListener('click',()=>{
 
 /* ── HINT ── */
 document.getElementById('btn-hint').addEventListener('click',()=>{
-  if(!hintsLeft)return;
+  if(!hintsLeft){const hb=document.getElementById('hintBanner');hb.textContent='💡 Já não tens mais dicas neste jogo';hb.classList.add('show');clearTimeout(hb._t);hb._t=setTimeout(()=>hb.classList.remove('show'),2200);return;}
   const rem=placed.filter(p=>!found.includes(p.word));if(!rem.length)return;
   const p=rem[Math.floor(Math.random()*rem.length)],i=placed.indexOf(p);
   p.coords.forEach(([r,c])=>{
     const cl=getCell(r,c);
-    cl.style.background='var(--bc'+i+')';cl.style.color='var(--fc'+i+')';
-    setTimeout(()=>{if(!found.includes(p.word)){cl.style.background='';cl.style.color='';}},2200);
+    cl.style.background='var(--bc'+i+')';cl.style.color='var(--fc'+i+')';cl.classList.add('hint-flash');
+    setTimeout(()=>{cl.classList.remove('hint-flash');if(!found.includes(p.word)){cl.style.background='';cl.style.color='';}},3500);
   });
-  hintsLeft--;hintsSession[lvl]=hintsLeft;document.getElementById('hints-left').textContent=hintsLeft;
+  hintsLeft--;updateHintUI();
+  const hb=document.getElementById('hintBanner');hb.textContent='💡 Procura: '+p.word;hb.classList.add('show');clearTimeout(hb._t);hb._t=setTimeout(()=>hb.classList.remove('show'),3500);
   document.getElementById('msg').textContent='💡 Procura: '+p.word;
   showBub('Procura a palavra '+p.word+'! 🕵️');
   setTimeout(()=>{if(found.length<placed.length)document.getElementById('msg').textContent='';},2400);
