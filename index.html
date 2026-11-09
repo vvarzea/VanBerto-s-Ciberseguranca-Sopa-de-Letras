@@ -1048,6 +1048,7 @@ body{font-family:'Nunito','Trebuchet MS',sans-serif;}
     <p class="lvl-desc" id="startLvlDesc">Grelha 10×10 · horizontal e vertical · 7 palavras</p>
     <p class="tiny" style="margin-top:-4px;">🛡️ Tema: proteger-te online</p>
     <div class="row">
+      <button id="btnContinue" class="btn" style="display:none">⏩ Continuar o jogo</button>
       <button id="btnStart" class="btn primary">▶ Começar a jogar!</button>
     </div>
     <p class="tiny">PC: clica e arrasta · Tablet/telemóvel: toca e arrasta</p>
@@ -1463,7 +1464,7 @@ function drawVanBerto(ctx,blink,step,armsUp){
 
 let lvl='easy',grid=[],placed=[],found=[],cells=[],
     selecting=false,startCell=null,selLine=[],
-    hintsLeft=3,playerName='Herói da Cibersegurança',startSel='easy';
+    hintsLeft=3,playerName='Herói',startSel='easy';
 /* cada novo jogo começa sempre com as dicas do nível (3) */
 function updateHintUI(){
   const b=document.getElementById('btn-hint'),n=document.getElementById('hints-left');
@@ -1562,6 +1563,7 @@ function buildGame(){
     document.getElementById('msg').textContent='';
     document.getElementById('score').textContent='0 / '+placed.length+' encontradas';
     document.getElementById('pbar').style.width='0%';
+    vbSaveGame();
   }));
 }
 
@@ -1688,6 +1690,7 @@ function onFound(p){
   showBub(msgs[Math.floor(Math.random()*msgs.length)]);
   if(typeof vbJump==='function')vbJump();
   showTip(p.word);
+  vbSaveGame();
   if(found.length===placed.length)setTimeout(showWin,700);
   else{document.getElementById('msg').textContent='✅ '+p.word+'!';setTimeout(()=>{if(found.length<placed.length)document.getElementById('msg').textContent='';},1500);}
 }
@@ -1710,6 +1713,7 @@ function showTip(word){
 
 function showWin(){
   stopTimer();
+  vbClearSave();
   playWin();
   const L=LEVELS[lvl],pct=found.length/placed.length,
     m=pct===1?L.medals[0]:pct>=.7?L.medals[1]:L.medals[2];
@@ -1819,9 +1823,59 @@ document.querySelectorAll('#startScreen .lvl-btn').forEach(b=>b.addEventListener
    #0a0414 escuro = tom da vinheta radial dos outros ecrãs (menu, vitória) */
 function setLetterbox(c){/* o fundo creme com pontinhos vem do CSS (tema Hora do Código) */}
 
+/* ── GUARDAR NOME E JOGO (continua mesmo depois de sair) ── */
+const VB_NAME_KEY='vb_playername',VB_SAVE_KEY='vb_sopa_save';
+function vbSaveName(n){try{localStorage.setItem(VB_NAME_KEY,n);}catch(e){}}
+function vbSaveGame(){
+  try{
+    if(!grid.length||!placed.length||found.length>=placed.length)return;
+    localStorage.setItem(VB_SAVE_KEY,JSON.stringify({lvl,grid,placed,found,hintsLeft,tips:tipsAprendidas}));
+  }catch(e){}
+}
+function vbClearSave(){try{localStorage.removeItem(VB_SAVE_KEY);}catch(e){}vbRefreshContinue();}
+function vbLoadSave(){
+  try{
+    const d=JSON.parse(localStorage.getItem(VB_SAVE_KEY)||'null');
+    if(d&&LEVELS[d.lvl]&&Array.isArray(d.grid)&&Array.isArray(d.placed)&&Array.isArray(d.found)&&d.found.length<d.placed.length)return d;
+  }catch(e){}
+  return null;
+}
+function vbRefreshContinue(){
+  const b=document.getElementById('btnContinue');
+  if(b)b.style.display=vbLoadSave()?'':'none';
+}
+document.getElementById('playerName').addEventListener('input',e=>vbSaveName(e.target.value.trim()));
+document.getElementById('btnContinue').addEventListener('click',()=>{
+  const d=vbLoadSave();if(!d){vbRefreshContinue();return;}
+  playerName=document.getElementById('playerName').value.trim()||'Herói';
+  vbSaveName(playerName);
+  lvl=d.lvl;grid=d.grid;placed=d.placed;found=d.found;hintsLeft=d.hintsLeft;tipsAprendidas=d.tips||[];
+  document.getElementById('startScreen').classList.remove('active');
+  document.getElementById('gameScreen').classList.add('active');
+  setLetterbox('#241143');
+  document.getElementById('robot-player-name') && (document.getElementById('robot-player-name').textContent='👤 '+playerName);
+  document.getElementById('fixed-robot-name').textContent='👤 '+playerName;
+  document.querySelector('.robot-wrap') && document.querySelector('.robot-wrap').classList.add('visible');
+  document.getElementById('fixed-robot-wrap').classList.add('visible');
+  document.getElementById('gameLvlDesc').textContent=LEVELS[lvl].label;
+  updateHintUI();
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    renderGrid(LEVELS[lvl].size);renderWL();reapplyFound();
+    document.getElementById('msg').textContent='';
+    document.getElementById('score').textContent=found.length+' / '+placed.length+' encontradas';
+    document.getElementById('pbar').style.width=Math.round(found.length/placed.length*100)+'%';
+  }));
+});
+(function(){
+  let n='';try{n=localStorage.getItem(VB_NAME_KEY)||'';}catch(e){}
+  if(n)document.getElementById('playerName').value=n;
+  vbRefreshContinue();
+})();
+
 /* ── START ── */
 document.getElementById('btnStart').addEventListener('click',()=>{
-  playerName=document.getElementById('playerName').value.trim()||'Herói da Cibersegurança';
+  playerName=document.getElementById('playerName').value.trim()||'Herói';
+  vbSaveName(playerName);
   lvl=startSel;
   document.getElementById('startScreen').classList.remove('active');
   document.getElementById('gameScreen').classList.add('active');
@@ -1845,7 +1899,7 @@ document.getElementById('btn-hint').addEventListener('click',()=>{
     cl.style.background='var(--bc'+i+')';cl.style.color='var(--fc'+i+')';cl.classList.add('hint-flash');
     setTimeout(()=>{cl.classList.remove('hint-flash');if(!found.includes(p.word)){cl.style.background='';cl.style.color='';}},3500);
   });
-  hintsLeft--;updateHintUI();
+  hintsLeft--;updateHintUI();vbSaveGame();
   const hb=document.getElementById('hintBanner');hb.textContent='💡 Procura: '+p.word;hb.classList.add('show');clearTimeout(hb._t);hb._t=setTimeout(()=>hb.classList.remove('show'),3500);
   document.getElementById('msg').textContent='💡 Procura: '+p.word;
   showBub('Procura a palavra '+p.word+'! 🕵️');
@@ -1874,6 +1928,7 @@ function goMenu(){
   document.getElementById('tipToast').classList.remove('show');
   showBub('Encontra as palavras da Cibersegurança! 🔍🛡️');
   stopConf();
+  vbRefreshContinue();
 }
 
 /* ── CONFETTI ── */
